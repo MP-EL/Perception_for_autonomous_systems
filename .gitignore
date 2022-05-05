@@ -127,3 +127,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+Stereo_calibration_images/
+Stereo_conveyor_without_occlusions/
+Stereo_conveyor_with_occlusions/
+
+project.avi
+output.png
