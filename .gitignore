@@ -137,3 +137,5 @@ output.png
 config/ 
 Config_Files/
 Images/Stereo*
+Config Files/*
+Images/Output/*

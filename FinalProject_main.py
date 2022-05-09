@@ -1,4 +1,5 @@
 # IMPORT NECCESSARY LIBRARIES:
+from turtle import shapesize
 import numpy as np
 import cv2
 import sys
@@ -180,10 +181,10 @@ x, P, u, F, H, R, I = kalmanFilter.init()
 sift = cv2.SIFT_create()
 FPS = 1000/60 #[ms]
 frameIdx = 0
-startROI = [1065, 255, 1246, 431] # startX, startY, endX, endY.
+startROI = [1000, 255, 1246, 431] # startX, startY, endX, endY.
 endROI = [377, 359, 713, 672] # startX, startY, endX, endY.
 xlimL = 420
-xlimU = 1100 #1070
+xlimU = 1000 #1070
 startX = 0
 startY = 0
 lastdx = -4
@@ -191,12 +192,16 @@ lastdy = 1
 timerLimit = 2
 startTime = time.time()
 # Load images:
-bandMask = cv2.imread('Images/maskR.png',0)
+bandMask = cv2.imread('Images/maskRu.png',0)
 _, mask = cv2.threshold(bandMask, 20, 255, cv2.THRESH_BINARY)
-images_left = glob.glob('Images/sample_Stereo_conveyor_without_occlusions/left/*.png')
-images_left = glob.glob('Images/Stereo_conveyor_with_occlusions/left/*.png')
+# images_left = sorted(glob.glob('Images/sample_Stereo_conveyor_without_occlusions/left/*.png'))
+images_left = sorted(glob.glob('Images/Stereo_conveyor_without_occlusions/left/*.png'))
 #images_left = glob.glob('Images/Stereo_conveyor_without_occlusions/left/*.png')
 assert images_left
+
+shape_of_image = np.array(cv2.imread(images_left[0])).shape
+videoWriter_fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+out = cv2.VideoWriter('Images/Output/output.mp4', videoWriter_fourcc, 20.0, (shape_of_image[1], shape_of_image[0]))
 
 
 # MAIN LOOP:
@@ -204,6 +209,9 @@ if __name__ == "__main__":
     try:
         while True:
             print("Camera Calibration done.. Running main program ...")
+            j = 0
+            class_array = []
+            resetting = False
             # Go through every image in folder:
             for fnamel in images_left:
                 # Display and undistort each frame:
@@ -221,7 +229,7 @@ if __name__ == "__main__":
                 if frameIdx == 0:
                     BG=frame
                     lastFrame = np.zeros((BG.shape[0], BG.shape[1], 3), dtype = "uint8")
-                    out = cv2.VideoWriter('Images/Output/output.mp4', -1, 20.0, (BG.shape[1], BG.shape[0]))
+                    out.write(frame)
                     #cv2.imwrite('Images/Output/remap.png',BG) #debug.
                 frame = imgL.copy()
                 diff = cv2.absdiff(frame, BG)
@@ -253,7 +261,7 @@ if __name__ == "__main__":
                             maskedObject = cv2.bitwise_and(OG,OG, mask=ROImask)
                             #cv2.imshow('sift', siftDetector(sift, lastFrame, maskedObject)) #debug.
                             OF,avgDX,avgDY = calcOpticalFlow(lastFrame, maskedObject)
-                            cv2.imshow('OF', OF) #debug.
+                            # cv2.imshow('OF', OF) #debug.
                             lastFrame = maskedObject
                             # Update Kalman Filter observation:
                             #Z = np.array([[xbb+(wbb)], [ybb+(hbb)]])
@@ -261,25 +269,44 @@ if __name__ == "__main__":
                             #cv2.circle(frame, (int(xbb+(wbb)), int(ybb+(hbb))), radius=0, color=(0, 0, 255), thickness=10)
                             
                             if startX == 0 and startY == 0: 
-                                startX = xbb+wbb
-                                startY = ybb+hbb
+                                startX = xbb+wbb/2
+                                startY = ybb+hbb/2
                                 #Z = np.array([[xbb+(wbb/2)], [ybb+(hbb/2)]])
-                                Z = np.array([[startX], [startY]])
-                                # YOLO:
-                                if xbb > xlimU:
-                                    objectClass = yoloDetector(frame)
+                                Z = np.array([[startX], [startY]])  
                             else:
                                 #print('avgDX=' + str(avgDX))
                                 #print('avgDY=' + str(avgDY))
                                 ndx, ndy = accelLimiter(avgDX, avgDY, lastdx, lastdy)
                                 ndx = -4
                                 ndy = 1
-                                startX = startX + ndx
-                                startY = startY + ndy
+                                startX = xbb+wbb/2# startX + ndx
+                                startY = ybb+hbb/2# startY + ndy
                                 lastdx = ndx
                                 lastdy = ndy
                                 Z = np.array([[startX], [startY]])
                             x, P = kalmanFilter.update(x, P, Z, H, R)
+                            if j < 20 and xbb+wbb > xlimU:#xbb > xlimU:
+                                class_array.append(yoloDetector(frame))
+                                if class_array[j] != 'Box':
+                                    j = 20
+                                j += 1 
+                            else:
+                                if all(x==class_array[0] for x in class_array) and len(class_array) != 0:
+                                    objectClass = class_array[0]
+                                elif len(class_array) != 0:
+                                    temp_arr = []
+                                    for i in class_array:
+                                        if i != 'Box':
+                                            temp_arr.append(i)
+                                    temp = max(set(temp_arr),key=class_array.count),
+                                    if len([temp,]) == 1:
+                                        objectClass = str(temp[0])
+                                    else:
+                                        objectClass = str(temp[0])
+                                if xbb+wbb < xlimU:
+                                    j = 0
+                                    temp = []
+                                    class_array = [] 
                             
                 # Update kalman filter prediction:
                 x, P = kalmanFilter.predict(x, P, F, u)
@@ -299,8 +326,8 @@ if __name__ == "__main__":
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 fontScale = 1
                 cv2.rectangle(frame, (10,10), (250,200),color, thickness)
-                cv2.line(frame, (xlimL,0), (xlimL,BG.shape[0]), (0,255,0), thickness) #debug.
-                cv2.line(frame, (xlimU,0), (xlimU,BG.shape[0]), color, thickness) #debug.
+                # cv2.line(frame, (xlimL,0), (xlimL,BG.shape[0]), (0,255,0), thickness) #debug.
+                # cv2.line(frame, (xlimU,0), (xlimU,BG.shape[0]), color, thickness) #debug.
                 cv2.putText(frame, 'Object: ' + objectClass, (30,50), font, fontScale, color, thickness, cv2.LINE_AA)
                 cv2.putText(frame, 'X = ' + str(int(xpos)), (30,90), font, fontScale, color, thickness, cv2.LINE_AA)
                 cv2.putText(frame, 'Y = ' + str(int(ypos)), (30,130), font, fontScale, color, thickness, cv2.LINE_AA)
