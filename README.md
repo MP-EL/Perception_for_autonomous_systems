@@ -18,3 +18,5 @@ https://dtudk-my.sharepoint.com/:u:/g/personal/evanb_dtu_dk/EYbO51sCiKdGm3gcRGhh
 
 After having done all these steps you can run <br/>
 ```python3 FinalProject_main.py```
+
+There is also 2 branches main branch for tracking with occlusions and without_occlusion branch for tracking without occlusions
