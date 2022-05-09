@@ -58,48 +58,14 @@ def calcOpticalFlow(lastFrame, currentFrame):
     else:
         return img,0,0
 
-def siftDetector(sift, lastFrame, currentFrame):
-    img1 = cv2.cvtColor(lastFrame, cv2.COLOR_RGB2GRAY)
-    img2 = cv2.cvtColor(currentFrame, cv2.COLOR_RGB2GRAY)
-    # Initiate SIFT detector
-    #sift = cv2.SIFT_create()
-    # find the keypoints and descriptors with SIFT
-    kp1, des1 = sift.detectAndCompute(img1, None)
-    kp2, des2 = sift.detectAndCompute(img2, None)
-    # BFMatcher with default params
-    bf = cv2.BFMatcher()
-    matches = bf.knnMatch(des1, des2, k=2)
-    # Apply ratio test
-    good = []
-    for m,n in matches:
-        if m.distance < 0.18 * n.distance: #0.75
-            good.append([m])
-    # cv.drawMatchesKnn expects list of lists as matches.
-    img3 = cv2.drawMatchesKnn(img1,kp1,img2,kp2,good,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-    # Display image
-    #cv2.imshow('5',img3)
-    return img3
-
 def accelLimiter(dx, dy, lastdx, lastdy):
-    # This function limits the rate of change observed through optical flow, based on 3 assumptions.
+    # This function limits the rate of change observed through optical flow, based on 3 assumptions:
     # 1. Object cannot accelerate rapidly.
-    if abs(dx > 4 or dx ==0):
-        #dx = 3
-        dx = lastdx
-    if abs(dy > 2 or dy ==0):
-        #dy = 1
-        dy = lastdy
-    """
     # 2. Object cannot stand still on conveyor.
-    if abs(dx == 0):
-        dx = 2
+    if abs(dx) > 8 or abs(dx) < 3 or dx == 0 or abs(dx)>abs(lastdx)+1 or abs(dx)>abs(lastdx)-1:
         dx = lastdx
-    if abs(dy == 0):
-        dy = 2
-        dy = 
-    if dy>dx+1 or dy<dx-1:
-        dy = abs(dx)-1
-    """
+    if abs(dy) > 3 or dy ==0 or abs(dy)>abs(lastdy)+1 or abs(dy)>abs(lastdy)-1:
+        dy = lastdy
     # 3. Object cannot change direction.
     ndx = abs(dx)*-1
     ndy = abs(dy)
@@ -256,13 +222,9 @@ if __name__ == "__main__":
                             cv2.imshow('OF', OF) #debug.
                             lastFrame = maskedObject
                             # Update Kalman Filter observation:
-                            #Z = np.array([[xbb+(wbb)], [ybb+(hbb)]])
-                            #x, P = kalmanFilter.update(x, P, Z, H, R)
-                            #cv2.circle(frame, (int(xbb+(wbb)), int(ybb+(hbb))), radius=0, color=(0, 0, 255), thickness=10)
-                            
                             if startX == 0 and startY == 0: 
-                                startX = xbb+wbb
-                                startY = ybb+hbb
+                                startX = xbb
+                                startY = ybb
                                 #Z = np.array([[xbb+(wbb/2)], [ybb+(hbb/2)]])
                                 Z = np.array([[startX], [startY]])
                                 # YOLO:
@@ -272,8 +234,8 @@ if __name__ == "__main__":
                                 #print('avgDX=' + str(avgDX))
                                 #print('avgDY=' + str(avgDY))
                                 ndx, ndy = accelLimiter(avgDX, avgDY, lastdx, lastdy)
-                                ndx = -4
-                                ndy = 1
+                                #ndx = -4
+                                #ndy = 1
                                 startX = startX + ndx
                                 startY = startY + ndy
                                 lastdx = ndx
