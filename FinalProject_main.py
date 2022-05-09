@@ -83,23 +83,72 @@ def siftDetector(sift, lastFrame, currentFrame):
 def accelLimiter(dx, dy, lastdx, lastdy):
     # This function limits the rate of change observed through optical flow, based on 3 assumptions.
     # 1. Object cannot accelerate rapidly.
-    if abs(dx > 3):
-        dx = 3
-    if abs(dy > 2):
-        dy = 1
+    if abs(dx > 4 or dx ==0):
+        #dx = 3
+        dx = lastdx
+    if abs(dy > 2 or dy ==0):
+        #dy = 1
+        dy = lastdy
+    """
     # 2. Object cannot stand still on conveyor.
     if abs(dx == 0):
         dx = 2
         dx = lastdx
     if abs(dy == 0):
         dy = 2
-        dy = lastdy
+        dy = 
     if dy>dx+1 or dy<dx-1:
         dy = abs(dx)-1
+    """
     # 3. Object cannot change direction.
     ndx = abs(dx)*-1
     ndy = abs(dy)
     return ndx, ndy
+
+def yoloDetector(img):
+    # YOLO:
+    img = imgR
+    #img = cv2.imread('yolo3.jpeg')
+    height, width, channels = img.shape
+    # Detecting objects
+    blob = cv2.dnn.blobFromImage(img, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
+    net.setInput(blob)
+    outs = net.forward(output_layers)
+    # Showing informations on the screen
+    class_ids = []
+    confidences = []
+    boxes = []
+    label = "Box"
+    for o in outs:
+        for detection in o:
+            scores = detection[5:]
+            class_id = np.argmax(scores)
+            confidence = scores[class_id]
+            if confidence > 0.5:
+                # Object detected
+                center_x = int(detection[0] * width)
+                center_y = int(detection[1] * height)
+                w = int(detection[2] * width)
+                h = int(detection[3] * height)
+    
+                # Rectangle coordinates
+                x = int(center_x - w / 2)
+                y = int(center_y - h / 2)
+    
+                boxes.append([x, y, w, h])
+                confidences.append(float(confidence))
+                class_ids.append(class_id)
+                indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
+                font = cv2.FONT_HERSHEY_PLAIN
+    for i in range(len(boxes)):
+        if i in indexes:
+            x, y, w, h = boxes[i]
+            label = str(classes[class_ids[i]])
+            color = colors[i]
+            cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
+            cv2.putText(img, label, (x, y + 30), font, 3, color, 3)
+    #cv2.imshow("YOLO", img)
+    return label
     
 
 # SETUP:
@@ -116,6 +165,17 @@ else:
     np.savetxt('Config Files/maprx.txt', maprx)
     np.savetxt('Config Files/mapry.txt', mapry)
 
+# Load Yolo
+net = cv2.dnn.readNet("Config Files/yolov3.weights", "Config Files/yolov3.cfg")
+classes = []
+with open("Config Files/yolov3.txt", "r") as f:
+    classes = [line.strip() for line in f.readlines()]
+layer_names = net.getLayerNames()
+#output_layers = [layer_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
+output_layers = [layer_names[i-1] for i in net.getUnconnectedOutLayers()]
+colors = np.random.uniform(0, 255, size=(len(classes), 3))
+objectClass = ""
+
 x, P, u, F, H, R, I = kalmanFilter.init()
 sift = cv2.SIFT_create()
 FPS = 1000/60 #[ms]
@@ -126,8 +186,8 @@ xlimL = 420
 xlimU = 1100 #1070
 startX = 0
 startY = 0
-lastdx = 2
-lastdy = 2
+lastdx = -4
+lastdy = 1
 timerLimit = 2
 startTime = time.time()
 # Load images:
@@ -201,13 +261,16 @@ if __name__ == "__main__":
                             #cv2.circle(frame, (int(xbb+(wbb)), int(ybb+(hbb))), radius=0, color=(0, 0, 255), thickness=10)
                             
                             if startX == 0 and startY == 0: 
-                                startX = xbb
-                                startY = ybb
+                                startX = xbb+wbb
+                                startY = ybb+hbb
                                 #Z = np.array([[xbb+(wbb/2)], [ybb+(hbb/2)]])
                                 Z = np.array([[startX], [startY]])
+                                # YOLO:
+                                if xbb > xlimU:
+                                    objectClass = yoloDetector(frame)
                             else:
-                                print('avgDX=' + str(avgDX))
-                                print('avgDY=' + str(avgDY))
+                                #print('avgDX=' + str(avgDX))
+                                #print('avgDY=' + str(avgDY))
                                 ndx, ndy = accelLimiter(avgDX, avgDY, lastdx, lastdy)
                                 ndx = -4
                                 ndy = 1
@@ -238,7 +301,7 @@ if __name__ == "__main__":
                 cv2.rectangle(frame, (10,10), (250,200),color, thickness)
                 cv2.line(frame, (xlimL,0), (xlimL,BG.shape[0]), (0,255,0), thickness) #debug.
                 cv2.line(frame, (xlimU,0), (xlimU,BG.shape[0]), color, thickness) #debug.
-                cv2.putText(frame, 'Object: Book', (30,50), font, fontScale, color, thickness, cv2.LINE_AA)
+                cv2.putText(frame, 'Object: ' + objectClass, (30,50), font, fontScale, color, thickness, cv2.LINE_AA)
                 cv2.putText(frame, 'X = ' + str(int(xpos)), (30,90), font, fontScale, color, thickness, cv2.LINE_AA)
                 cv2.putText(frame, 'Y = ' + str(int(ypos)), (30,130), font, fontScale, color, thickness, cv2.LINE_AA)
                 cv2.putText(frame, 'z = ' + str(round(zpos, 1)) + ' m', (30,170), font, fontScale, color, thickness, cv2.LINE_AA)
@@ -246,7 +309,7 @@ if __name__ == "__main__":
                 # Display resulting frames:
                 out.write(frame.astype('uint8'))
                 cv2.imshow("frame", frame)
-                cv2.imshow("diff", dilated)
+                #cv2.imshow("diff", dilated)
                 cropStart = imgL[startROI[1]:startROI[1]+(startROI[3]-startROI[1]), startROI[0]:startROI[0]+(startROI[2]-startROI[0])]
                 cropEnd = imgL[endROI[1]:endROI[1]+(endROI[3]-endROI[1]), endROI[0]:endROI[0]+(endROI[2]-endROI[0])]
                 #cv2.imshow("cropStart", cropStart)
